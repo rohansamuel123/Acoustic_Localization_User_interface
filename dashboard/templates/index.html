@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Acoustic Threat Localization Network</title>
+
+    <style>
+      body {
+        background: #020b1f;
+        color: white;
+        font-family: Segoe UI;
+        text-align: center;
+      }
+
+      h1 {
+        color: #00ffff;
+        letter-spacing: 2px;
+      }
+
+      .card {
+        padding: 20px;
+        margin: 10px;
+        background: #0f1e45;
+        border: 1px solid #00ffff;
+        border-radius: 12px;
+        box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        display: inline-block;
+        width: 150px;
+      }
+
+      .map {
+        width: 400px;
+        height: 400px;
+        border: 2px solid #00ffff;
+        box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        margin: auto;
+        position: relative;
+      }
+
+      .node {
+        width: 30px;
+        height: 30px;
+        background: #00ffff;
+        border-radius: 50%;
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: black;
+        font-weight: bold;
+      }
+
+      .source {
+        width: 20px;
+        height: 20px;
+        background: red;
+        border-radius: 50%;
+        position: absolute;
+        box-shadow: 0 0 20px red;
+      }
+
+      .history {
+        width: 600px;
+        margin: auto;
+        margin-top: 20px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      td,
+      th {
+        border: 1px solid #00ffff;
+        padding: 8px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Acoustic Threat Localization Network</h1>
+
+    <h2 id="threat">Threat : LOW</h2>
+
+    <div class="card" id="A">A</div>
+    <div class="card" id="B">B</div>
+    <div class="card" id="C">C</div>
+    <div class="card" id="D">D</div>
+
+    <br /><br />
+
+    <div class="map">
+      <div class="node" style="left: -15px; top: -15px">A</div>
+
+      <div class="node" style="right: -15px; top: -15px">B</div>
+
+      <div class="node" style="left: -15px; bottom: -15px">C</div>
+
+      <div class="node" style="right: -15px; bottom: -15px">D</div>
+
+      <div class="source" id="source"></div>
+    </div>
+
+    <h3 id="coords">X : 0 | Y : 0</h3>
+
+    <div class="history">
+      <h2>Recent Events</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Threat</th>
+            <th>X</th>
+            <th>Y</th>
+          </tr>
+        </thead>
+
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+
+    <h4>ESP32 Mesh | Real-Time Acoustic Threat Localization</h4>
+
+    <script>
+      async function updateData() {
+        let res = await fetch("/data");
+        let d = await res.json();
+
+        document.getElementById("A").innerHTML = "A<br>" + d.A;
+
+        document.getElementById("B").innerHTML = "B<br>" + d.B;
+
+        document.getElementById("C").innerHTML = "C<br>" + d.C;
+
+        document.getElementById("D").innerHTML = "D<br>" + d.D;
+
+        let threat = document.getElementById("threat");
+
+        threat.innerHTML = "Threat : " + d.threat;
+
+        if (d.threat == "HIGH") threat.style.color = "red";
+        else if (d.threat == "MEDIUM") threat.style.color = "orange";
+        else threat.style.color = "lime";
+
+        document.getElementById("coords").innerHTML =
+          "X : " + d.x.toFixed(2) + " | Y : " + d.y.toFixed(2);
+
+        let source = document.getElementById("source");
+
+        source.style.left = d.x * 100 + "px";
+
+        source.style.top = d.y * 100 + "px";
+      }
+
+      async function updateHistory() {
+        let res = await fetch("/history");
+
+        let data = await res.json();
+
+        let body = document.getElementById("historyBody");
+
+        body.innerHTML = "";
+
+        data
+          .slice()
+          .reverse()
+          .forEach((e) => {
+            body.innerHTML += `
+            <tr>
+            <td>${e.time}</td>
+            <td>${e.threat}</td>
+            <td>${e.x}</td>
+            <td>${e.y}</td>
+            </tr>
+            `;
+          });
+      }
+
+      setInterval(updateData, 200);
+
+      setInterval(updateHistory, 1000);
+    </script>
+  </body>
+</html>

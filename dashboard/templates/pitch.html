@@ -1,0 +1,1862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECHO — Acoustic Event Localization</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script>
+  // Graceful fallback for project images that aren't bundled with the dashboard.
+  function imgFallback(img){
+    if(img.dataset.fb) return; img.dataset.fb = 1;
+    var d = document.createElement('div');
+    d.className = 'img-fallback';
+    d.innerHTML = '<div class="fb-icon">' + (img.dataset.icon || '📡') + '</div>' +
+                  '<div class="fb-label">' + (img.alt || 'Visual') + '</div>';
+    if (img.parentNode) img.parentNode.replaceChild(d, img);
+  }
+</script>
+<style>
+  :root {
+    --amber: #F5A623;
+    --green: #00FF9D;
+    --red: #FF3B3B;
+    --dark: #020B10;
+    --dark2: #041520;
+    --dark3: #071E2D;
+    --glass: rgba(5,25,40,0.7);
+    --border: rgba(245,166,35,0.3);
+    --text: #E8F4F8;
+    --muted: rgba(232,244,248,0.45);
+  }
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* Custom cursor */
+  .cursor {
+    position: fixed; width: 12px; height: 12px;
+    background: var(--amber); border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s, opacity 0.2s;
+    mix-blend-mode: screen;
+  }
+  .cursor-ring {
+    position: fixed; width: 36px; height: 36px;
+    border: 1px solid rgba(245,166,35,0.5); border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%, -50%);
+    transition: transform 0.18s ease, width 0.2s, height 0.2s;
+  }
+
+  /* ── NAVIGATION ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    padding: 20px 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(2,11,16,0.95), transparent);
+  }
+  .nav-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.6rem; letter-spacing: 0.15em;
+    color: var(--amber);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .nav-logo span { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 24px; }
+  .nav-dots {
+    display: flex; gap: 10px;
+  }
+  .nav-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(245,166,35,0.2);
+    border: 1px solid var(--amber);
+    cursor: pointer; transition: all 0.3s;
+  }
+  .nav-dot.active { background: var(--amber); transform: scale(1.3); }
+  .nav-dot:hover { background: var(--amber); }
+  .nav-demo {
+    font-family: 'Bebas Neue', sans-serif; font-size: 0.98rem; letter-spacing: 0.12em;
+    color: var(--dark); background: var(--green); text-decoration: none;
+    padding: 9px 20px; transition: all 0.25s;
+    clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+  }
+  .nav-demo:hover { background: #6fffce; box-shadow: 0 0 22px rgba(0,255,157,0.45); }
+
+  /* ── SLIDES ── */
+  .slide {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    position: relative; overflow: hidden;
+    padding: 80px 48px;
+  }
+
+  /* ── SLIDE 1: HERO ── */
+  #slide-1 {
+    background: var(--dark);
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .hero-canvas {
+    position: absolute; inset: 0; z-index: 0;
+  }
+
+  .hero-content {
+    position: relative; z-index: 2;
+    max-width: 820px;
+  }
+
+  .hero-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem; letter-spacing: 0.3em;
+    color: var(--amber); text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .hero-tag::before {
+    content: ''; display: block;
+    width: 40px; height: 1px; background: var(--amber);
+  }
+
+  .hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(4rem, 9vw, 9rem);
+    line-height: 0.9;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    text-shadow: 0 0 60px rgba(245,166,35,0.15);
+  }
+  .hero-title .accent { color: var(--amber); }
+
+  .hero-sub {
+    margin-top: 28px;
+    font-size: 1.05rem; line-height: 1.7;
+    color: var(--muted);
+    max-width: 540px;
+    font-weight: 400;
+  }
+
+  .hero-cta {
+    margin-top: 48px;
+    display: flex; align-items: center; gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    background: var(--amber); color: var(--dark);
+    padding: 14px 36px; font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem; letter-spacing: 0.12em;
+    border: none; cursor: pointer; transition: all 0.3s;
+    text-decoration: none; display: inline-block;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+  .btn-primary:hover { background: #FFD166; transform: translateY(-2px); }
+
+  .btn-demo {
+    background: var(--green); color: var(--dark);
+    padding: 14px 36px; font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem; letter-spacing: 0.12em;
+    border: none; cursor: pointer; transition: all 0.3s;
+    text-decoration: none; display: inline-block;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  }
+  .btn-demo:hover { background: #6fffce; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,255,157,0.25); }
+
+  .btn-outline {
+    color: var(--amber); border: 1px solid var(--amber);
+    padding: 13px 36px; font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem; letter-spacing: 0.12em;
+    background: transparent; cursor: pointer; transition: all 0.3s;
+    text-decoration: none; display: inline-block;
+  }
+  .btn-outline:hover { background: rgba(245,166,35,0.1); }
+
+  .hero-stats {
+    margin-top: 72px;
+    display: flex; gap: 48px; flex-wrap: wrap;
+  }
+  .hero-stat { border-left: 2px solid var(--amber); padding-left: 16px; }
+  .hero-stat-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.4rem; color: var(--amber);
+    line-height: 1;
+  }
+  .hero-stat-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.2em;
+    color: var(--muted); text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── SLIDE 2: PROBLEM ── */
+  #slide-2 {
+    background: linear-gradient(135deg, var(--dark2) 0%, var(--dark) 60%);
+  }
+  .section-eyebrow {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.35em;
+    color: var(--amber); text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-eyebrow::before {
+    content: ''; display: block;
+    width: 30px; height: 1px; background: var(--amber);
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(2.8rem, 5vw, 5.5rem);
+    line-height: 0.95; letter-spacing: 0.01em;
+    margin-bottom: 40px;
+  }
+  .section-title .hl { color: var(--amber); }
+
+  .problem-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 20px; width: 100%; max-width: 1100px;
+    margin-top: 24px;
+  }
+
+  .problem-card {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    padding: 32px 28px;
+    position: relative;
+    backdrop-filter: blur(12px);
+    transition: transform 0.3s, border-color 0.3s;
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%);
+  }
+  .problem-card:hover { transform: translateY(-4px); border-color: var(--amber); }
+
+  .problem-icon {
+    font-size: 2rem; margin-bottom: 16px;
+  }
+  .problem-card h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem; letter-spacing: 0.05em;
+    color: var(--amber); margin-bottom: 10px;
+  }
+  .problem-card p {
+    font-size: 0.88rem; line-height: 1.65;
+    color: var(--muted);
+  }
+
+  .problem-card .tag {
+    position: absolute; top: -1px; left: 20px;
+    background: var(--red);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem; letter-spacing: 0.2em; color: white;
+    padding: 3px 10px; text-transform: uppercase;
+  }
+
+  /* ── SLIDE 3: SOLUTION ── */
+  #slide-3 {
+    background: var(--dark3);
+    padding: 80px 48px;
+    align-items: flex-start;
+  }
+
+  .solution-layout {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 60px; width: 100%; max-width: 1200px; align-items: center;
+  }
+
+  .solution-img-wrapper {
+    position: relative;
+  }
+  .solution-img-wrapper::before {
+    content: '';
+    position: absolute; inset: -2px;
+    background: linear-gradient(135deg, var(--amber), transparent, var(--green));
+    z-index: 0;
+    clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+  }
+  .solution-img-wrapper img {
+    width: 100%; display: block;
+    position: relative; z-index: 1;
+    clip-path: polygon(1px 1px, calc(100% - 21px) 1px, calc(100% - 1px) 21px, calc(100% - 1px) calc(100% - 1px), 21px calc(100% - 1px), 1px calc(100% - 21px));
+  }
+
+  .solution-overlay {
+    position: absolute; bottom: 20px; left: 20px; right: 20px;
+    z-index: 3;
+    background: rgba(2,11,16,0.88);
+    border: 1px solid var(--border);
+    padding: 14px 18px;
+    backdrop-filter: blur(10px);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem; color: var(--green);
+    letter-spacing: 0.08em;
+  }
+
+  .solution-points { display: flex; flex-direction: column; gap: 20px; }
+
+  .sol-point {
+    display: flex; gap: 16px; align-items: flex-start;
+    padding: 20px; background: var(--glass);
+    border: 1px solid var(--border);
+    transition: border-color 0.3s;
+  }
+  .sol-point:hover { border-color: var(--amber); }
+
+  .sol-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.2rem; color: var(--amber);
+    line-height: 1; flex-shrink: 0; width: 36px;
+    opacity: 0.6;
+  }
+  .sol-text h4 {
+    font-size: 0.95rem; font-weight: 700;
+    margin-bottom: 5px; color: var(--text);
+  }
+  .sol-text p { font-size: 0.83rem; color: var(--muted); line-height: 1.6; }
+
+  /* ── SLIDE 4: HOW IT WORKS ── */
+  #slide-4 {
+    background: var(--dark);
+    padding: 80px 48px;
+  }
+
+  .tdoa-layout {
+    display: grid; grid-template-columns: 1.1fr 0.9fr;
+    gap: 60px; width: 100%; max-width: 1200px; align-items: center;
+  }
+
+  .tdoa-steps { display: flex; flex-direction: column; gap: 0; }
+
+  .tdoa-step {
+    display: flex; gap: 0; position: relative;
+    cursor: pointer;
+  }
+  .tdoa-step:not(:last-child)::after {
+    content: '';
+    position: absolute; left: 19px; top: 44px;
+    width: 2px; height: calc(100% - 10px);
+    background: linear-gradient(to bottom, var(--amber), transparent);
+    z-index: 0;
+  }
+
+  .step-num-wrap {
+    flex-shrink: 0; z-index: 1;
+    width: 40px; height: 40px;
+    border: 2px solid var(--amber);
+    border-radius: 50%;
+    background: var(--dark2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem; color: var(--amber);
+    margin-right: 20px; flex-shrink: 0;
+    transition: all 0.3s;
+    margin-top: 4px;
+  }
+  .tdoa-step:hover .step-num-wrap {
+    background: var(--amber); color: var(--dark);
+  }
+
+  .step-content { padding: 4px 0 32px; }
+  .step-content h4 {
+    font-size: 1rem; font-weight: 700;
+    margin-bottom: 6px; color: var(--text);
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.06em; font-size: 1.15rem;
+  }
+  .step-content p { font-size: 0.82rem; color: var(--muted); line-height: 1.6; }
+
+  .tdoa-visual {
+    position: relative;
+  }
+  .tdoa-img-frame {
+    position: relative;
+    border: 1px solid var(--border);
+    padding: 3px;
+  }
+  .tdoa-img-frame img { width: 100%; display: block; }
+  .tdoa-img-frame::before {
+    content: 'TDOA VISUALIZATION';
+    position: absolute; top: -10px; left: 16px;
+    background: var(--dark3);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem; letter-spacing: 0.25em;
+    color: var(--amber); padding: 0 8px;
+    z-index: 2;
+  }
+
+  /* ── SLIDE 5: METHODOLOGY ── */
+  #slide-5 {
+    background: linear-gradient(170deg, var(--dark2), var(--dark));
+    padding: 80px 48px;
+  }
+
+  .method-layout {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 60px; width: 100%; max-width: 1200px; align-items: center;
+  }
+
+  .method-img-wrap {
+    position: relative;
+  }
+  .method-img-wrap::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, var(--dark2) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .method-img-wrap img { width: 100%; display: block; }
+
+  .method-steps {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .method-chip {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    padding: 16px;
+    display: flex; gap: 12px; align-items: flex-start;
+    transition: all 0.3s;
+    position: relative; overflow: hidden;
+  }
+  .method-chip::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--amber);
+    transform: scaleY(0); transform-origin: bottom;
+    transition: transform 0.3s;
+  }
+  .method-chip:hover::before { transform: scaleY(1); }
+  .method-chip:hover { border-color: rgba(245,166,35,0.6); }
+
+  .chip-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.8rem; color: var(--amber); opacity: 0.5;
+    line-height: 1; flex-shrink: 0;
+  }
+  .chip-text h5 { font-size: 0.82rem; font-weight: 700; margin-bottom: 3px; }
+  .chip-text p { font-size: 0.73rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── IMAGE FALLBACK (for unbundled project images) ── */
+  .img-fallback {
+    width: 100%; min-height: 280px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    position: relative; z-index: 1;
+    background:
+      repeating-linear-gradient(45deg, rgba(245,166,35,0.05) 0 12px, transparent 12px 24px),
+      var(--dark2);
+    border: 1px dashed rgba(245,166,35,0.35);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace; font-size: 0.68rem;
+    letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .img-fallback .fb-icon { font-size: 2.6rem; opacity: 0.55; }
+  .img-fallback .fb-label { max-width: 75%; text-align: center; line-height: 1.7; }
+
+  /* ── SLIDE 6: HARDWARE/TECH ── */
+  #slide-6 {
+    background: var(--dark);
+    padding: 80px 48px;
+  }
+
+  .tech-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 16px; width: 100%; max-width: 1100px;
+    margin-top: 40px;
+  }
+
+  .tech-card {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    padding: 28px 20px;
+    text-align: center;
+    transition: all 0.3s;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  }
+  .tech-card:hover {
+    border-color: var(--green); transform: translateY(-5px);
+    box-shadow: 0 20px 40px rgba(0,255,157,0.08);
+  }
+  .tech-icon { font-size: 2rem; margin-bottom: 14px; }
+  .tech-card h4 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem; letter-spacing: 0.06em;
+    color: var(--green); margin-bottom: 8px;
+  }
+  .tech-card p { font-size: 0.77rem; color: var(--muted); line-height: 1.5; }
+  .tech-card .tech-badge {
+    display: inline-block; margin-top: 12px;
+    background: rgba(0,255,157,0.08);
+    border: 1px solid rgba(0,255,157,0.25);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem; letter-spacing: 0.15em;
+    color: var(--green); padding: 3px 10px;
+  }
+
+  .cost-banner {
+    width: 100%; max-width: 1100px;
+    margin-top: 24px;
+    background: linear-gradient(90deg, rgba(245,166,35,0.1), rgba(245,166,35,0.05));
+    border: 1px solid var(--border); border-left: 4px solid var(--amber);
+    padding: 20px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+  }
+  .cost-banner h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.3rem; letter-spacing: 0.08em; color: var(--amber);
+  }
+  .cost-banner p { font-size: 0.85rem; color: var(--muted); }
+  .cost-val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3rem; color: var(--amber); line-height: 1;
+  }
+  .cost-val span { font-size: 1.2rem; opacity: 0.6; }
+
+  /* ── SLIDE 7: ACCURACY ── */
+  #slide-7 {
+    background: var(--dark3);
+    padding: 80px 48px;
+  }
+
+  .accuracy-layout {
+    display: grid; grid-template-columns: 1.2fr 0.8fr;
+    gap: 60px; width: 100%; max-width: 1200px;
+  }
+
+  .accuracy-bars { margin-top: 32px; display: flex; flex-direction: column; gap: 20px; }
+
+  .acc-item {}
+  .acc-label {
+    display: flex; justify-content: space-between;
+    font-size: 0.82rem; margin-bottom: 8px;
+  }
+  .acc-label span:first-child { color: var(--text); font-weight: 600; }
+  .acc-label span:last-child {
+    font-family: 'Space Mono', monospace;
+    color: var(--amber); font-size: 0.75rem;
+  }
+  .acc-track {
+    height: 6px; background: rgba(255,255,255,0.07);
+    border-radius: 0; position: relative; overflow: hidden;
+  }
+  .acc-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green), var(--amber));
+    transition: width 1.5s cubic-bezier(.22,1,.36,1);
+    width: 0;
+  }
+  .acc-fill.animated { width: var(--w); }
+
+  .accuracy-quote {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--green);
+    padding: 32px 28px;
+    margin-top: 32px;
+  }
+  .accuracy-quote p {
+    font-size: 1rem; line-height: 1.75;
+    color: var(--text); font-style: italic;
+  }
+  .accuracy-quote cite {
+    display: block; margin-top: 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.2em;
+    color: var(--green); font-style: normal;
+  }
+
+  .big-numbers {
+    display: flex; flex-direction: column; gap: 20px;
+    justify-content: center; height: 100%;
+  }
+  .big-num-card {
+    background: var(--glass); border: 1px solid var(--border);
+    padding: 24px 28px;
+    transition: all 0.3s;
+  }
+  .big-num-card:hover { border-color: var(--amber); }
+  .big-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3.6rem; line-height: 1; color: var(--amber);
+  }
+  .big-num-label {
+    font-size: 0.8rem; color: var(--muted);
+    margin-top: 4px; line-height: 1.5;
+  }
+
+  /* ── SLIDE 8: SDGs ── */
+  #slide-8 {
+    background: var(--dark2);
+    padding: 80px 48px;
+  }
+
+  .sdg-grid {
+    display: grid; grid-template-columns: repeat(3,1fr);
+    gap: 20px; width: 100%; max-width: 900px;
+    margin-top: 40px;
+  }
+
+  .sdg-card {
+    padding: 32px 24px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
+    border: 1px solid var(--border);
+    transition: all 0.3s; position: relative; overflow: hidden;
+    cursor: default;
+  }
+  .sdg-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    opacity: 0.06; z-index: 0;
+    transition: opacity 0.3s;
+  }
+  .sdg-card:hover::after { opacity: 0.12; }
+  .sdg-card:hover { transform: scale(1.02); }
+
+  .sdg-card.sdg9 { background: rgba(253,157,36,0.08); }
+  .sdg-card.sdg9::after { background: #FD9D24; }
+  .sdg-card.sdg11 { background: rgba(253,214,47,0.08); }
+  .sdg-card.sdg11::after { background: #FDD62F; }
+  .sdg-card.sdg16 { background: rgba(0,104,157,0.12); }
+  .sdg-card.sdg16::after { background: #00689D; }
+
+  .sdg-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3.5rem; line-height: 1;
+    position: relative; z-index: 1;
+  }
+  .sdg9 .sdg-num { color: #FD9D24; }
+  .sdg11 .sdg-num { color: #FDD62F; }
+  .sdg16 .sdg-num { color: #00B8FF; }
+
+  .sdg-card h3 {
+    font-size: 0.9rem; font-weight: 700;
+    position: relative; z-index: 1;
+    line-height: 1.4; color: var(--text);
+  }
+  .sdg-card p {
+    font-size: 0.78rem; color: var(--muted);
+    line-height: 1.6; position: relative; z-index: 1;
+  }
+
+  /* ── SLIDE 9: CLOSING CTA ── */
+  #slide-9 {
+    background: var(--dark);
+    min-height: 100vh;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .cta-canvas {
+    position: absolute; inset: 0; z-index: 0;
+  }
+
+  .cta-content {
+    position: relative; z-index: 2;
+    text-align: center; max-width: 800px;
+    padding: 48px;
+  }
+
+  .cta-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(3rem, 7vw, 7rem);
+    line-height: 0.9; letter-spacing: 0.02em;
+    margin-bottom: 28px;
+  }
+  .cta-title .line2 { color: var(--amber); }
+
+  .cta-sub {
+    font-size: 1rem; color: var(--muted);
+    line-height: 1.75; max-width: 560px; margin: 0 auto 40px;
+  }
+
+  .cta-buttons {
+    display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+  }
+
+  .team-line {
+    margin-top: 60px;
+    display: flex; align-items: center; gap: 20px; justify-content: center;
+  }
+  .team-divider { flex: 1; max-width: 80px; height: 1px; background: var(--border); }
+  .team-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem; letter-spacing: 0.3em; color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes pulse-ring {
+    0% { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
+    100% { transform: translate(-50%,-50%) scale(2.5); opacity: 0; }
+  }
+
+  @keyframes radar-sweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .blink { animation: blink 1.2s infinite; }
+
+  @keyframes float-in {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .slide-in { animation: float-in 0.7s ease forwards; }
+  .delay-1 { animation-delay: 0.1s; opacity: 0; }
+  .delay-2 { animation-delay: 0.25s; opacity: 0; }
+  .delay-3 { animation-delay: 0.4s; opacity: 0; }
+  .delay-4 { animation-delay: 0.55s; opacity: 0; }
+  .delay-5 { animation-delay: 0.7s; opacity: 0; }
+
+  /* ── SCROLL REVEAL ── */
+  .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.8s, transform 0.8s; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--dark); }
+  ::-webkit-scrollbar-thumb { background: var(--amber); }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar {
+    position: fixed; top: 0; left: 0; height: 2px;
+    background: linear-gradient(90deg, var(--amber), var(--green));
+    z-index: 200; transition: width 0.1s;
+    box-shadow: 0 0 12px var(--amber);
+  }
+
+  /* ── TDOA SIM WIDGET ── */
+  .tdoa-sim-widget {
+    position: absolute; right: 40px; top: 50%; transform: translateY(-50%);
+    width: 490px;
+    background: rgba(2,11,16,0.88);
+    border: 1px solid rgba(245,166,35,0.28);
+    backdrop-filter: blur(18px);
+    clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(245,166,35,0.06), 0 24px 60px rgba(0,0,0,0.5);
+  }
+  .sim-header {
+    padding: 9px 16px;
+    border-bottom: 1px solid rgba(245,166,35,0.15);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sim-header-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.58rem; letter-spacing: 0.28em; color: var(--amber);
+    text-transform: uppercase;
+  }
+  .sim-header-right {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .sim-drag-hint {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.52rem; letter-spacing: 0.1em; color: rgba(245,166,35,0.45);
+  }
+  .sim-status {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.56rem; color: var(--green); letter-spacing: 0.15em;
+  }
+  .sim-canvas-wrap { position: relative; cursor: default; }
+  #tdoa-sim-canvas { display: block; width: 100%; cursor: crosshair; }
+  .sim-readout {
+    padding: 9px 12px;
+    border-top: 1px solid rgba(245,166,35,0.12);
+    display: grid; grid-template-columns: 1fr 1fr 1.3fr 1fr;
+    gap: 7px;
+  }
+  .readout-cell {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(245,166,35,0.1);
+    padding: 6px 9px;
+  }
+  .readout-key {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.5rem; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 3px;
+  }
+  .readout-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem; color: var(--amber); font-weight: 700;
+  }
+  .readout-val.green { color: var(--green); }
+
+  /* ── DECORATIVE LINES ── */
+  .deco-grid {
+    position: absolute; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(245,166,35,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,166,35,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+
+  /* ── HORIZONTAL DIVIDER ── */
+  .h-divider {
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 20px 0;
+  }
+
+  /* mobile */
+  @media (max-width: 768px) {
+    .problem-grid,
+    .solution-layout,
+    .tdoa-layout,
+    .method-layout,
+    .accuracy-layout,
+    .tech-grid,
+    .sdg-grid,
+    .method-steps { grid-template-columns: 1fr; }
+    .tech-grid { grid-template-columns: 1fr 1fr; }
+    .tdoa-sim-widget { display: none; }
+    nav { padding: 16px 24px; }
+    .nav-dots { display: none; }
+    .slide { padding: 80px 24px; }
+    .hero-stats { gap: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursor-ring"></div>
+<div class="progress-bar" id="progress-bar"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">ECHO<span> / ACOUSTIC</span></div>
+  <div class="nav-right">
+    <div class="nav-dots" id="nav-dots">
+      <div class="nav-dot active" onclick="scrollToSlide(0)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(1)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(2)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(3)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(4)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(5)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(6)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(7)"></div>
+      <div class="nav-dot" onclick="scrollToSlide(8)"></div>
+    </div>
+    <a class="nav-demo" href="/dashboard">▸ TRY LIVE DEMO</a>
+  </div>
+</nav>
+
+<!-- ─────────────────── SLIDE 1: HERO ─────────────────── -->
+<section class="slide" id="slide-1">
+  <div class="deco-grid"></div>
+  <canvas class="hero-canvas" id="hero-canvas"></canvas>
+
+  <div class="hero-content">
+    <div class="hero-tag slide-in delay-1">
+      <span class="blink">●</span> IoT Defense Technology — Prototype Pitch
+    </div>
+    <h1 class="hero-title slide-in delay-2">
+      HEAR THE<br><span class="accent">THREAT.</span><br>FIND THE<br>SOURCE.
+    </h1>
+    <p class="hero-sub slide-in delay-3">
+      Real-time acoustic event localization for battlefield situational awareness — using distributed IoT sensors, TDOA mathematics, and edge signal processing.
+    </p>
+    <div class="hero-cta slide-in delay-4">
+      <a class="btn-demo" href="/dashboard">▸ TRY LIVE DEMO</a>
+      <button class="btn-outline" onclick="scrollToSlide(1)">EXPLORE THE PITCH →</button>
+    </div>
+    <div class="hero-stats slide-in delay-5">
+      <div class="hero-stat">
+        <div class="hero-stat-num">343 m/s</div>
+        <div class="hero-stat-label">Speed of Sound</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">1–3m</div>
+        <div class="hero-stat-label">Localization Accuracy</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">₹1500</div>
+        <div class="hero-stat-label">Prototype Cost</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">3×</div>
+        <div class="hero-stat-label">Microphone Array</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TDOA Live Simulation -->
+  <div class="tdoa-sim-widget">
+    <div class="sim-header">
+      <div class="sim-header-label">⬡ TDOA LIVE SIMULATION</div>
+      <div class="sim-header-right">
+        <div class="sim-drag-hint">DRAG NODES TO UPDATE</div>
+        <div class="sim-status"><span class="blink">●</span> RUNNING</div>
+      </div>
+    </div>
+    <div class="sim-canvas-wrap">
+      <canvas id="tdoa-sim-canvas" width="470" height="340"></canvas>
+    </div>
+    <div class="sim-readout">
+      <div class="readout-cell">
+        <div class="readout-key">Δt₂₁</div>
+        <div class="readout-val" id="rd-dt21">—</div>
+      </div>
+      <div class="readout-cell">
+        <div class="readout-key">Δt₃₁</div>
+        <div class="readout-val" id="rd-dt31">—</div>
+      </div>
+      <div class="readout-cell">
+        <div class="readout-key">EST. POS</div>
+        <div class="readout-val green" id="rd-pos">—</div>
+      </div>
+      <div class="readout-cell">
+        <div class="readout-key">ERROR</div>
+        <div class="readout-val" id="rd-err">—</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 2: PROBLEM ─────────────────── -->
+<section class="slide" id="slide-2">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1100px;z-index:1;">
+    <div class="section-eyebrow reveal">The Problem Space</div>
+    <h2 class="section-title reveal">THE BATTLEFIELD<br>HAS <span class="hl">BLIND SPOTS</span></h2>
+    <p style="color:var(--muted);font-size:0.95rem;max-width:650px;line-height:1.7;margin-bottom:8px;" class="reveal">
+      Existing defense surveillance relies on optical, thermal, and radar systems — each constrained by physics, cost, and terrain. Sound travels where cameras cannot see.
+    </p>
+    <div class="h-divider"></div>
+    <div class="problem-grid">
+      <div class="problem-card reveal">
+        <div class="tag">LIMITATION 1</div>
+        <div class="problem-icon">👁</div>
+        <h3>Line-of-Sight Lock</h3>
+        <p>Optical and thermal imaging systems require direct visual access. Walls, fog, foliage, and terrain breaks create dead zones where threats go undetected.</p>
+      </div>
+      <div class="problem-card reveal">
+        <div class="tag">LIMITATION 2</div>
+        <div class="problem-icon">💸</div>
+        <h3>Prohibitive Cost</h3>
+        <p>Radar systems and thermal arrays cost tens of thousands per unit — making dense sensor deployment financially impossible for many forward-operating scenarios.</p>
+      </div>
+      <div class="problem-card reveal">
+        <div class="tag">LIMITATION 3</div>
+        <div class="problem-icon">🌫</div>
+        <h3>Environmental Degradation</h3>
+        <p>Low-visibility conditions — smoke, dust, night — drastically reduce optical effectiveness. Radar requires power infrastructure. Neither is truly passive.</p>
+      </div>
+    </div>
+    <div style="margin-top:28px;padding:20px 28px;background:rgba(255,59,59,0.06);border:1px solid rgba(255,59,59,0.2);border-left:4px solid var(--red);" class="reveal">
+      <p style="font-size:0.9rem;color:var(--text);line-height:1.7;">
+        <strong style="color:var(--red);">The Gap:</strong> Acoustic signals propagate omnidirectionally. They penetrate obstructions. They require no illumination, no line of sight, no radar signature. <strong>Sound carries position data — we just need to decode it.</strong>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 3: SOLUTION ─────────────────── -->
+<section class="slide" id="slide-3">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1200px;z-index:1;">
+    <div class="section-eyebrow reveal">The Solution</div>
+    <h2 class="section-title reveal">ECHO — <span class="hl">ACOUSTIC</span><br>EVENT GRID INTEL SYSTEM</h2>
+    <div class="solution-layout">
+      <div class="solution-img-wrapper reveal">
+        <img src="/static/hardware.png" alt="Prototype Hardware Setup" data-icon="🛠️" onerror="imgFallback(this)" />
+        <div class="solution-overlay">
+          <span style="font-family:'Space Mono',monospace;color:var(--green);">▸</span>
+          &nbsp;LIVE SYSTEM — Location: X: 2.3m · Y: 1.8m
+          &nbsp;&nbsp;<span class="blink" style="color:var(--green);">●</span>&nbsp;ACTIVE
+        </div>
+      </div>
+      <div class="solution-points">
+        <div class="sol-point reveal">
+          <div class="sol-num">01</div>
+          <div class="sol-text">
+            <h4>Passive Acoustic Detection</h4>
+            <p>Three microphones continuously sample audio. No emissions, no radar cross-section, no optical signature. The sensor array is effectively invisible.</p>
+          </div>
+        </div>
+        <div class="sol-point reveal">
+          <div class="sol-num">02</div>
+          <div class="sol-text">
+            <h4>TDOA-Based Triangulation</h4>
+            <p>Time Difference of Arrival mathematics converts microsecond-level delays into precise spatial coordinates. A 1ms delay = ~34cm distance difference.</p>
+          </div>
+        </div>
+        <div class="sol-point reveal">
+          <div class="sol-num">03</div>
+          <div class="sol-text">
+            <h4>Real-Time Visualization</h4>
+            <p>Estimated source position is displayed on a live 2D/3D map within milliseconds of detection — fed via ESP32 to a Python/web dashboard.</p>
+          </div>
+        </div>
+        <div class="sol-point reveal">
+          <div class="sol-num">04</div>
+          <div class="sol-text">
+            <h4>Edge-Deployed IoT Architecture</h4>
+            <p>Entirely self-contained on a single ESP32 microcontroller. No cloud dependency, no network latency. Deploy anywhere, instantly.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 4: HOW IT WORKS ─────────────────── -->
+<section class="slide" id="slide-4">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1200px;z-index:1;">
+    <div class="section-eyebrow reveal">Technical Core</div>
+    <h2 class="section-title reveal">HOW <span class="hl">TDOA</span><br>WORKS</h2>
+    <div class="tdoa-layout">
+      <div class="tdoa-steps">
+        <div class="tdoa-step reveal">
+          <div class="step-num-wrap">1</div>
+          <div class="step-content">
+            <h4>Sound Event Occurs</h4>
+            <p>A sudden impulsive acoustic event — gunshot, explosion, balloon pop — radiates outward in all directions as a pressure wave traveling at 343 m/s.</p>
+          </div>
+        </div>
+        <div class="tdoa-step reveal">
+          <div class="step-num-wrap">2</div>
+          <div class="step-content">
+            <h4>Microphones Record Arrival Times</h4>
+            <p>M1, M2, M3 each log the precise timestamp when they detect the sound peak. Since distances differ, arrival times t₁, t₂, t₃ are slightly staggered.</p>
+          </div>
+        </div>
+        <div class="tdoa-step reveal">
+          <div class="step-num-wrap">3</div>
+          <div class="step-content">
+            <h4>Compute TDOA Values</h4>
+            <p>Pairwise differences: Δt₂₁ = t₂ − t₁, Δt₃₁ = t₃ − t₁, Δt₃₂ = t₃ − t₂. These encode distance-difference constraints as hyperbolic curves in space.</p>
+          </div>
+        </div>
+        <div class="tdoa-step reveal">
+          <div class="step-num-wrap">4</div>
+          <div class="step-content">
+            <h4>Hyperbola Intersection → Position</h4>
+            <p>Each TDOA value defines a hyperbola of possible source locations. The intersection of three hyperbolas pinpoints the exact source coordinate (x, y).</p>
+          </div>
+        </div>
+      </div>
+      <div class="tdoa-visual reveal">
+        <div class="tdoa-img-frame">
+          <img src="/static/tdoa.png" alt="TDOA Sound Localization Diagram" data-icon="🎯" onerror="imgFallback(this)" />
+        </div>
+        <div style="margin-top:16px;padding:16px 20px;background:var(--glass);border:1px solid var(--border);">
+          <p style="font-family:'Space Mono',monospace;font-size:0.7rem;color:var(--amber);line-height:1.8;">
+            Δt₂₁ = t₂ − t₁<br>
+            Δt₃₁ = t₃ − t₁<br>
+            Δt₃₂ = t₃ − t₂<br>
+            <span style="color:var(--green);">→ Source @ (0.7, 0.6)</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 5: METHODOLOGY ─────────────────── -->
+<section class="slide" id="slide-5">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1200px;z-index:1;">
+    <div class="section-eyebrow reveal">Process Architecture</div>
+    <h2 class="section-title reveal">8-STAGE<br><span class="hl">METHODOLOGY</span></h2>
+    <div class="method-layout">
+      <div class="method-img-wrap reveal">
+        <img src="/static/methodology.png" alt="Methodology Flowchart" data-icon="🗺️" onerror="imgFallback(this)" />
+      </div>
+      <div>
+        <div class="method-steps">
+          <div class="method-chip reveal">
+            <div class="chip-num">01</div>
+            <div class="chip-text"><h5>Audio Acquisition</h5><p>Microphones sample continuously, capturing ambient audio at all times.</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">02</div>
+            <div class="chip-text"><h5>Event Detection</h5><p>Amplitude threshold triggers on sudden impulsive sounds (shots, blasts).</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">03</div>
+            <div class="chip-text"><h5>ToA Estimation</h5><p>Precise time of arrival calculated at every microphone for each event.</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">04</div>
+            <div class="chip-text"><h5>TDOA Calculation</h5><p>Pairwise time differences between all microphone pairs are computed.</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">05</div>
+            <div class="chip-text"><h5>Source Localization</h5><p>Least-squares multilateration resolves the TDOA system to (x, y) coordinates.</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">06</div>
+            <div class="chip-text"><h5>Visualization</h5><p>Position displayed live on a 2D map or coordinate grid in real time.</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">07</div>
+            <div class="chip-text"><h5>Data Logging</h5><p>All events, TDOA values, and coordinates stored for post-analysis.</p></div>
+          </div>
+          <div class="method-chip reveal">
+            <div class="chip-num">08</div>
+            <div class="chip-text"><h5>System Evaluation</h5><p>Known-position test cases score accuracy; performance metrics recorded.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 6: HARDWARE & TECH ─────────────────── -->
+<section class="slide" id="slide-6">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1100px;z-index:1;">
+    <div class="section-eyebrow reveal">Engineering Stack</div>
+    <h2 class="section-title reveal">HARDWARE &<br><span class="hl">SOFTWARE</span></h2>
+    <div class="tech-grid">
+      <div class="tech-card reveal">
+        <div class="tech-icon">🧠</div>
+        <h4>ESP32 MCU</h4>
+        <p>Dual-core 240MHz processor handles ADC sampling, peak detection, and TDOA computation simultaneously.</p>
+        <div class="tech-badge">MICROCONTROLLER</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">🎙</div>
+        <h4>MAX4466 Mics</h4>
+        <p>Three analog electret microphone modules with adjustable gain. Wired connections eliminate wireless sync complexity.</p>
+        <div class="tech-badge">SENSOR × 3</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">🐍</div>
+        <h4>Python Backend</h4>
+        <p>PySerial reads serial output from ESP32. TDOA algorithms and least-squares solver implemented in NumPy/SciPy.</p>
+        <div class="tech-badge">PROCESSING</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">🌐</div>
+        <h4>Web Dashboard</h4>
+        <p>Live HTML/CSS/JS frontend with Chart.js visualization. Optional p5.js canvas for real-time position plotting.</p>
+        <div class="tech-badge">VISUALIZATION</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">⚡</div>
+        <h4>Arduino IDE</h4>
+        <p>Embedded C/C++ firmware runs peak detection, timestamp capture, and TDOA value transmission via UART.</p>
+        <div class="tech-badge">FIRMWARE</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">📟</div>
+        <h4>LCD Display</h4>
+        <p>16×2 I²C display shows live X/Y coordinates directly on hardware without a connected PC.</p>
+        <div class="tech-badge">OPTIONAL OUTPUT</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">📡</div>
+        <h4>GCC-PHAT DSP</h4>
+        <p>Generalized Cross-Correlation Phase Transform improves TDOA estimation accuracy in noisy environments.</p>
+        <div class="tech-badge">ALGORITHM</div>
+      </div>
+      <div class="tech-card reveal">
+        <div class="tech-icon">🔲</div>
+        <h4>Breadboard Rig</h4>
+        <p>Rapid-prototyping breadboard setup enables fast iteration, wiring changes, and component swaps on the fly.</p>
+        <div class="tech-badge">HARDWARE</div>
+      </div>
+    </div>
+    <div class="cost-banner reveal">
+      <div>
+        <h3>Total Build Cost</h3>
+        <p>Complete prototype including all sensors, MCU, display, and wiring. Highly replicable and scalable.</p>
+      </div>
+      <div class="cost-val">₹800<span> – ₹1,500</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 7: ACCURACY ─────────────────── -->
+<section class="slide" id="slide-7">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1200px;z-index:1;">
+    <div class="section-eyebrow reveal">Performance Metrics</div>
+    <h2 class="section-title reveal">ACCURACY &<br><span class="hl">RESULTS</span></h2>
+    <div class="accuracy-layout">
+      <div>
+        <p style="color:var(--muted);line-height:1.75;font-size:0.92rem;margin-bottom:28px;" class="reveal">
+          Localization accuracy depends on microphone geometry, sampling rate, and environmental conditions. The system achieves sub-3-meter accuracy in controlled scenarios — sufficient for tactical awareness in field operations.
+        </p>
+        <div class="accuracy-bars">
+          <div class="acc-item reveal">
+            <div class="acc-label"><span>Controlled Indoor Accuracy</span><span>1–3 meters</span></div>
+            <div class="acc-track"><div class="acc-fill" style="--w:88%"></div></div>
+          </div>
+          <div class="acc-item reveal">
+            <div class="acc-label"><span>Outdoor Field Accuracy</span><span>3–8 meters</span></div>
+            <div class="acc-track"><div class="acc-fill" style="--w:65%"></div></div>
+          </div>
+          <div class="acc-item reveal">
+            <div class="acc-label"><span>Detection Latency</span><span>&lt; 50ms</span></div>
+            <div class="acc-track"><div class="acc-fill" style="--w:93%"></div></div>
+          </div>
+          <div class="acc-item reveal">
+            <div class="acc-label"><span>Suppressed Shot Detection</span><span>Short range</span></div>
+            <div class="acc-track"><div class="acc-fill" style="--w:45%"></div></div>
+          </div>
+          <div class="acc-item reveal">
+            <div class="acc-label"><span>Cost vs. Radar Systems</span><span>99% reduction</span></div>
+            <div class="acc-track"><div class="acc-fill" style="--w:99%"></div></div>
+          </div>
+        </div>
+        <div class="accuracy-quote reveal">
+          <p>"By measuring tiny differences in arrival time across spatially separated microphones, we can accurately estimate the origin of any impulsive acoustic event — in real time, at near-zero cost."</p>
+          <cite>— ECHO SYSTEM PRINCIPLE</cite>
+        </div>
+      </div>
+      <div class="big-numbers reveal">
+        <div class="big-num-card">
+          <div class="big-num">343</div>
+          <div class="big-num-label">m/s — Speed of sound. A 1ms arrival delay encodes ~34cm of spatial distance difference.</div>
+        </div>
+        <div class="big-num-card">
+          <div class="big-num">&lt;50ms</div>
+          <div class="big-num-label">End-to-end detection and localization latency from event to displayed coordinates.</div>
+        </div>
+        <div class="big-num-card">
+          <div class="big-num">3×</div>
+          <div class="big-num-label">Minimum microphone array size needed for full 2D spatial localization via TDOA hyperbolas.</div>
+        </div>
+        <div class="big-num-card">
+          <div class="big-num">99%</div>
+          <div class="big-num-label">Cost reduction compared to radar-based detection systems for equivalent spatial awareness.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 8: SDGs ─────────────────── -->
+<section class="slide" id="slide-8">
+  <div class="deco-grid"></div>
+  <div style="width:100%;max-width:1100px;z-index:1;text-align:center;">
+    <div class="section-eyebrow reveal" style="justify-content:center;">Global Impact</div>
+    <h2 class="section-title reveal" style="text-align:center;">UN SUSTAINABLE<br><span class="hl">DEVELOPMENT GOALS</span></h2>
+    <p style="color:var(--muted);font-size:0.92rem;max-width:600px;margin:0 auto 12px;line-height:1.75;" class="reveal">
+      ECHO directly advances three United Nations SDGs, bridging defense innovation with civilian and institutional benefit.
+    </p>
+    <div class="sdg-grid" style="margin:auto;">
+      <div class="sdg-card sdg9 reveal">
+        <div class="sdg-num">09</div>
+        <h3>Industry, Innovation & Infrastructure</h3>
+        <p>Demonstrates how low-cost IoT and signal processing can replace expensive infrastructure. Pushes the frontier of edge AI in defense applications.</p>
+      </div>
+      <div class="sdg-card sdg16 reveal">
+        <div class="sdg-num">16</div>
+        <h3>Peace, Justice & Strong Institutions</h3>
+        <p>Enhances security infrastructure for conflict monitoring, ceasefire verification, and institutional situational awareness without escalation.</p>
+      </div>
+      <div class="sdg-card sdg11 reveal">
+        <div class="sdg-num">11</div>
+        <h3>Sustainable Cities & Communities</h3>
+        <p>The same acoustic detection system can identify gunshots, accidents, and public safety events in urban environments — with zero additional cost.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SLIDE 9: CLOSING CTA ─────────────────── -->
+<section class="slide" id="slide-9">
+  <div class="deco-grid"></div>
+  <canvas class="cta-canvas" id="cta-canvas"></canvas>
+
+  <div class="cta-content">
+    <div class="section-eyebrow" style="justify-content:center;margin-bottom:20px;">
+      The Ask
+    </div>
+    <h2 class="cta-title slide-in delay-1">
+      SOUND IS DATA.<br>
+      <span class="line2">DATA IS POWER.</span>
+    </h2>
+    <p class="cta-sub slide-in delay-2">
+      ECHO is a working prototype proving that acoustic localization at battlefield scale is achievable with sub-₹1,500 hardware. We are building toward a multi-node deployment with wireless sync, ML-enhanced event classification, and 3D localization.
+    </p>
+    <div class="cta-buttons slide-in delay-3">
+      <a class="btn-demo" href="/dashboard">▸ TRY LIVE DEMO</a>
+      <button class="btn-outline">SUPPORT THE PROJECT</button>
+    </div>
+    <div class="team-line slide-in delay-4">
+      <div class="team-divider"></div>
+      <div class="team-label">Real-Time Acoustic Event Localization for Battlefield Situational Awareness Using Distributed IoT Sensors</div>
+      <div class="team-divider"></div>
+    </div>
+    <div style="margin-top:32px;display:flex;gap:32px;justify-content:center;flex-wrap:wrap;" class="slide-in delay-5">
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--amber);">SDG 9 · 11 · 16</div>
+        <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--muted);letter-spacing:0.2em;">UN ALIGNMENT</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--amber);">ESP32 + MAX4466</div>
+        <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--muted);letter-spacing:0.2em;">HARDWARE STACK</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;color:var(--amber);">₹800 – ₹1,500</div>
+        <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--muted);letter-spacing:0.2em;">BUILD COST</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── SCRIPTS ─────────────────── -->
+<script>
+// Cursor
+const cursor = document.getElementById('cursor');
+const ring = document.getElementById('cursor-ring');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+  setTimeout(() => {
+    ring.style.left = e.clientX + 'px';
+    ring.style.top = e.clientY + 'px';
+  }, 60);
+});
+
+// Progress bar
+window.addEventListener('scroll', () => {
+  const scrolled = window.scrollY;
+  const total = document.body.scrollHeight - window.innerHeight;
+  document.getElementById('progress-bar').style.width = (scrolled / total * 100) + '%';
+});
+
+// Nav dots active state
+const slides = document.querySelectorAll('.slide');
+const dots = document.querySelectorAll('.nav-dot');
+
+function scrollToSlide(i) {
+  slides[i].scrollIntoView({ behavior: 'smooth' });
+}
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const idx = Array.from(slides).indexOf(entry.target);
+      dots.forEach(d => d.classList.remove('active'));
+      if (dots[idx]) dots[idx].classList.add('active');
+    }
+  });
+}, { threshold: 0.5 });
+
+slides.forEach(s => observer.observe(s));
+
+// Scroll reveal
+const revealEls = document.querySelectorAll('.reveal');
+const revealObs = new IntersectionObserver(entries => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting) {
+      entry.target.style.transitionDelay = (i % 6) * 0.07 + 's';
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.15 });
+revealEls.forEach(el => revealObs.observe(el));
+
+// Accuracy bar animation
+const accFills = document.querySelectorAll('.acc-fill');
+const accObs = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('animated');
+    }
+  });
+}, { threshold: 0.5 });
+accFills.forEach(el => accObs.observe(el));
+
+// ── HERO CANVAS: Sound Wave Particles ──
+(function() {
+  const canvas = document.getElementById('hero-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [], waves = [];
+
+  function resize() {
+    W = canvas.width = canvas.parentElement.offsetWidth;
+    H = canvas.height = canvas.parentElement.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = Math.random() * W;
+      this.y = Math.random() * H;
+      this.vx = (Math.random() - 0.5) * 0.4;
+      this.vy = (Math.random() - 0.5) * 0.4;
+      this.r = Math.random() * 1.5 + 0.5;
+      this.alpha = Math.random() * 0.5 + 0.1;
+    }
+    update() {
+      this.x += this.vx; this.y += this.vy;
+      if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) this.reset();
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(245,166,35,${this.alpha})`;
+      ctx.fill();
+    }
+  }
+
+  class Wave {
+    constructor() { this.reset(); }
+    reset() {
+      this.x = W * 0.7 + Math.random() * W * 0.2;
+      this.y = H * 0.35 + Math.random() * H * 0.3;
+      this.r = 0; this.maxR = 200 + Math.random() * 200;
+      this.speed = 1 + Math.random() * 1.5;
+      this.alpha = 0.6;
+    }
+    update() {
+      this.r += this.speed;
+      this.alpha = 0.6 * (1 - this.r / this.maxR);
+      if (this.r > this.maxR) this.reset();
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(245,166,35,${this.alpha})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  for (let i = 0; i < 120; i++) particles.push(new Particle());
+  for (let i = 0; i < 5; i++) {
+    const w = new Wave();
+    w.r = Math.random() * w.maxR;
+    waves.push(w);
+  }
+
+  // Draw connection lines
+  function drawConnections() {
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 80) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(245,166,35,${0.08 * (1 - dist/80)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, W, H);
+    waves.forEach(w => { w.update(); w.draw(); });
+    drawConnections();
+    particles.forEach(p => { p.update(); p.draw(); });
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+
+// ── INTERACTIVE TDOA ACOUSTIC LOCALIZATION SIMULATION ──
+(function() {
+  const canvas = document.getElementById('tdoa-sim-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const W = 470, H = 340;
+  canvas.width = W; canvas.height = H;
+
+  const SCALE = 82;           // px per metre
+  const OX = W / 2, OY = H / 2 + 12;
+  const C = 343;              // speed of sound m/s
+  const HIT_R = 16;           // drag hit-test radius px
+
+  // ── Microphone and source state ──
+  const mics = [
+    { x: -1.0, y: -0.6,  label: 'M1', color: '#4A9EFF', rgb: '74,158,255' },
+    { x:  1.0, y: -0.6,  label: 'M2', color: '#00FF9D', rgb: '0,255,157' },
+    { x:  0.0, y:  1.1,  label: 'M3', color: '#FF6B6B', rgb: '255,107,107' },
+  ];
+  let src = { x: 0.35, y: 0.28 };
+
+  // Computed state (updated on every drag)
+  let tdoaState = null;   // { D12, D13, D32, dt21ms, dt31ms, estPos, errM }
+
+  // Wave animation state (purely cosmetic)
+  let wave = null;
+  let waveTimer = 0;
+  const WAVE_INTERVAL = 100; // frames
+  const WAVE_SPEED = C * SCALE / 60;  // px/frame at 60fps
+
+  // ── Coordinate helpers ──
+  function toCanvas(x, y) { return { cx: OX + x * SCALE, cy: OY - y * SCALE }; }
+  function fromCanvas(cx, cy) { return { x: (cx - OX) / SCALE, y: (OY - cy) / SCALE }; }
+  function d2(ax, ay, bx, by) { return Math.sqrt((ax-bx)**2 + (ay-by)**2); }
+
+  // ── Localization: gradient descent with multiple restarts ──
+  function localize(D12, D13) {
+    const cx0 = (mics[0].x+mics[1].x+mics[2].x)/3;
+    const cy0 = (mics[0].y+mics[1].y+mics[2].y)/3;
+    const starts = [
+      [cx0, cy0],
+      [cx0+0.4, cy0+0.4], [cx0-0.4, cy0+0.4], [cx0, cy0-0.6],
+      [cx0+0.6, cy0-0.3], [cx0-0.6, cy0-0.3],
+      [src.x, src.y],  // warm start from last known
+    ];
+    let best = { x: cx0, y: cy0 }, bestL = Infinity;
+
+    for (const [sx0, sy0] of starts) {
+      let px = sx0, py = sy0, lr = 0.06;
+      for (let it = 0; it < 2000; it++) {
+        const d1 = d2(px, py, mics[0].x, mics[0].y) + 1e-9;
+        const d_2 = d2(px, py, mics[1].x, mics[1].y) + 1e-9;
+        const d3 = d2(px, py, mics[2].x, mics[2].y) + 1e-9;
+        const r1 = (d_2 - d1) - D12, r2 = (d3 - d1) - D13;
+        const loss = r1*r1 + r2*r2;
+        if (loss < 1e-11) { best = {x:px,y:py}; bestL = 0; break; }
+        const dd1x=(px-mics[0].x)/d1, dd1y=(py-mics[0].y)/d1;
+        const dd2x=(px-mics[1].x)/d_2, dd2y=(py-mics[1].y)/d_2;
+        const dd3x=(px-mics[2].x)/d3, dd3y=(py-mics[2].y)/d3;
+        px -= lr*(2*r1*(dd2x-dd1x)+2*r2*(dd3x-dd1x));
+        py -= lr*(2*r1*(dd2y-dd1y)+2*r2*(dd3y-dd1y));
+        if (it % 500 === 499) lr *= 0.35;
+      }
+      const d1f=d2(px,py,mics[0].x,mics[0].y)+1e-9;
+      const d2f=d2(px,py,mics[1].x,mics[1].y)+1e-9;
+      const d3f=d2(px,py,mics[2].x,mics[2].y)+1e-9;
+      const fl=((d2f-d1f)-D12)**2+((d3f-d1f)-D13)**2;
+      if (fl < bestL) { bestL = fl; best = {x:px,y:py}; }
+      if (bestL < 1e-9) break;
+    }
+    return best;
+  }
+
+  // ── Compute TDOA + localize; update readout ──
+  function computeAll() {
+    const d1 = d2(src.x, src.y, mics[0].x, mics[0].y);
+    const d_2 = d2(src.x, src.y, mics[1].x, mics[1].y);
+    const d3 = d2(src.x, src.y, mics[2].x, mics[2].y);
+    const D12 = d_2 - d1, D13 = d3 - d1, D32 = d3 - d_2;
+    const estPos = localize(D12, D13);
+    const errM = d2(src.x, src.y, estPos.x, estPos.y);
+    tdoaState = {
+      D12, D13, D32,
+      dt21ms: (D12/C*1000), dt31ms: (D13/C*1000),
+      estPos, errM
+    };
+    document.getElementById('rd-dt21').textContent = (D12/C*1000).toFixed(2) + ' ms';
+    document.getElementById('rd-dt31').textContent = (D13/C*1000).toFixed(2) + ' ms';
+    document.getElementById('rd-pos').textContent = `(${estPos.x.toFixed(2)}, ${estPos.y.toFixed(2)})`;
+    const errCm = (errM*100).toFixed(1);
+    const errEl = document.getElementById('rd-err');
+    errEl.textContent = errCm + ' cm';
+    errEl.style.color = errM < 0.05 ? 'var(--green)' : errM < 0.2 ? 'var(--amber)' : '#FF6B6B';
+  }
+
+  // ── Draw a TDOA hyperbola (cosh/sinh parametric, both branches) ──
+  function drawHyperbola(mi, mj, Ddiff, strokeColor) {
+    const ax=mics[mi].x, ay=mics[mi].y, bx=mics[mj].x, by=mics[mj].y;
+    const cx0=(ax+bx)/2, cy0=(ay+by)/2;
+    const c_h = d2(ax,ay,bx,by)/2;
+    const a_h = Math.abs(Ddiff)/2;
+    if (a_h < 1e-4 || a_h >= c_h - 1e-4) return;
+    const b_h = Math.sqrt(c_h*c_h - a_h*a_h);
+    const ang = Math.atan2(by-ay, bx-ax);
+    const cos_a = Math.cos(ang), sin_a = Math.sin(ang);
+
+    ctx.save();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 5]);
+
+    for (const bSign of [1, -1]) {
+      ctx.beginPath();
+      let started = false;
+      for (let k = -90; k <= 90; k++) {
+        const t = k * 0.055;
+        const ch = Math.cosh(t), sh = Math.sinh(t);
+        const lx = bSign * a_h * ch, ly = b_h * sh;
+        const wx = lx*cos_a - ly*sin_a + cx0;
+        const wy = lx*sin_a + ly*cos_a + cy0;
+        const { cx, cy } = toCanvas(wx, wy);
+        if (cx < -60||cx>W+60||cy<-60||cy>H+60) { started=false; continue; }
+        if (!started) { ctx.moveTo(cx,cy); started=true; } else ctx.lineTo(cx,cy);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // ── Wave helpers ──
+  function emitWave() {
+    wave = { sx: src.x, sy: src.y, r: 0, maxR: 3.2 };
+  }
+
+  // ── Main draw loop ──
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(245,166,35,0.04)';
+    ctx.lineWidth = 0.5;
+    for (let gx=0; gx<W; gx+=40) { ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H); ctx.stroke(); }
+    for (let gy=0; gy<H; gy+=40) { ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke(); }
+
+    // Axes
+    ctx.strokeStyle='rgba(245,166,35,0.1)'; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.moveTo(12,OY); ctx.lineTo(W-12,OY); ctx.moveTo(OX,H-8); ctx.lineTo(OX,6); ctx.stroke();
+    ctx.fillStyle='rgba(245,166,35,0.22)'; ctx.font='9px Space Mono,monospace';
+    ctx.fillText('X',W-18,OY-6); ctx.fillText('Y',OX+5,14);
+
+    // Scale markers
+    ctx.strokeStyle='rgba(245,166,35,0.15)'; ctx.lineWidth=0.5;
+    for (let m=-2; m<=2; m++) {
+      if (m===0) continue;
+      const {cx:gcx,cy:gcy}=toCanvas(m,0);
+      ctx.beginPath(); ctx.moveTo(gcx,OY-4); ctx.lineTo(gcx,OY+4); ctx.stroke();
+      const {cx:gcx2,cy:gcy2}=toCanvas(0,m);
+      ctx.beginPath(); ctx.moveTo(OX-4,gcy2); ctx.lineTo(OX+4,gcy2); ctx.stroke();
+      ctx.fillStyle='rgba(245,166,35,0.18)'; ctx.font='7px Space Mono,monospace';
+      ctx.fillText(m+'m',gcx+2,OY+13);
+    }
+
+    // Wave animation (cosmetic only)
+    waveTimer++;
+    if (waveTimer >= WAVE_INTERVAL) { waveTimer=0; emitWave(); }
+    if (wave) {
+      wave.r += WAVE_SPEED / SCALE;
+      if (wave.r <= wave.maxR) {
+        const alpha = Math.max(0, 1 - wave.r/wave.maxR);
+        const {cx:wcx,cy:wcy} = toCanvas(wave.sx,wave.sy);
+        const rPx = wave.r * SCALE;
+        // Glow
+        const grad=ctx.createRadialGradient(wcx,wcy,rPx*0.85,wcx,wcy,rPx);
+        grad.addColorStop(0,'rgba(245,166,35,0)');
+        grad.addColorStop(0.65,`rgba(245,166,35,${alpha*0.07})`);
+        grad.addColorStop(1,'rgba(245,166,35,0)');
+        ctx.beginPath(); ctx.arc(wcx,wcy,rPx,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(245,166,35,${alpha*0.65})`; ctx.lineWidth=1.4; ctx.stroke();
+        ctx.fillStyle=grad; ctx.fill();
+        // Echo ring
+        if (wave.r>0.2) {
+          const r2=(wave.r-0.2)*SCALE, a2=Math.max(0,1-(wave.r-0.2)/wave.maxR);
+          ctx.beginPath(); ctx.arc(wcx,wcy,r2,0,Math.PI*2);
+          ctx.strokeStyle=`rgba(245,166,35,${a2*0.22})`; ctx.lineWidth=0.8; ctx.stroke();
+        }
+      } else wave=null;
+    }
+
+    // ── Draw hyperbolas (always live from computed TDOA) ──
+    if (tdoaState) {
+      // M1–M2 (blue)
+      drawHyperbola(1, 0, tdoaState.D12, 'rgba(100,180,255,0.5)');
+      // M1–M3 (red)
+      drawHyperbola(2, 0, tdoaState.D13, 'rgba(255,100,100,0.5)');
+      // M2–M3 (green)
+      drawHyperbola(2, 1, tdoaState.D32, 'rgba(0,255,157,0.35)');
+    }
+
+    // Mic triangle
+    ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=0.8;
+    ctx.beginPath();
+    mics.forEach((m,i)=>{ const{cx,cy}=toCanvas(m.x,m.y); i===0?ctx.moveTo(cx,cy):ctx.lineTo(cx,cy); });
+    ctx.closePath(); ctx.stroke();
+
+    // Lines from source to each mic (faint dashed)
+    const{cx:scx,cy:scy}=toCanvas(src.x,src.y);
+    mics.forEach(m=>{
+      const{cx:mcx,cy:mcy}=toCanvas(m.x,m.y);
+      ctx.beginPath(); ctx.setLineDash([2,7]);
+      ctx.strokeStyle=m.color+'28'; ctx.lineWidth=0.9;
+      ctx.moveTo(scx,scy); ctx.lineTo(mcx,mcy); ctx.stroke(); ctx.setLineDash([]);
+    });
+
+    // ── Draw microphones ──
+    mics.forEach((m,i)=>{
+      const{cx,cy}=toCanvas(m.x,m.y);
+      // Outer ring
+      ctx.beginPath(); ctx.arc(cx,cy,11,0,Math.PI*2);
+      ctx.strokeStyle=m.color+'66'; ctx.lineWidth=1.5; ctx.stroke();
+      // Inner dot
+      ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2);
+      ctx.fillStyle=m.color+'cc'; ctx.fill();
+      ctx.strokeStyle=m.color; ctx.lineWidth=1.3; ctx.stroke();
+      // Grab ring
+      ctx.beginPath(); ctx.arc(cx,cy,13,0,Math.PI*2);
+      ctx.strokeStyle=m.color+'22'; ctx.lineWidth=3; ctx.stroke();
+      // Label
+      ctx.fillStyle=m.color; ctx.font='bold 10px Space Mono,monospace';
+      const lx=i===0?cx-24:cx+13, ly=i===2?cy-13:cy+18;
+      ctx.fillText(m.label,lx,ly);
+    });
+
+    // ── Draw estimated position ──
+    if (tdoaState && tdoaState.estPos) {
+      const{cx:epx,cy:epy}=toCanvas(tdoaState.estPos.x,tdoaState.estPos.y);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(epx,epy,15,0,Math.PI*2);
+      ctx.strokeStyle='rgba(245,166,35,0.45)'; ctx.lineWidth=1; ctx.setLineDash([2,4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle='rgba(245,166,35,0.95)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(epx-10,epy); ctx.lineTo(epx+10,epy); ctx.moveTo(epx,epy-10); ctx.lineTo(epx,epy+10); ctx.stroke();
+      ctx.beginPath(); ctx.arc(epx,epy,3.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(245,166,35,1)'; ctx.fill();
+      ctx.fillStyle='rgba(245,166,35,0.8)'; ctx.font='bold 8px Space Mono,monospace';
+      ctx.fillText('EST.POS',epx+12,epy+4);
+      // Error line (thin, between true and estimated)
+      if (tdoaState.errM > 0.05) {
+        ctx.beginPath(); ctx.setLineDash([2,4]);
+        ctx.strokeStyle='rgba(245,166,35,0.3)'; ctx.lineWidth=1;
+        ctx.moveTo(epx,epy); ctx.lineTo(scx,scy); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
+
+    // ── Draw source ──
+    const pulseR = 6 + 3*Math.sin(Date.now()/320);
+    ctx.beginPath(); ctx.arc(scx,scy,pulseR+6,0,Math.PI*2);
+    ctx.strokeStyle='rgba(255,80,80,0.18)'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.save(); ctx.translate(scx,scy);
+    ctx.beginPath();
+    for (let i=0;i<10;i++) {
+      const a=(i*Math.PI)/5-Math.PI/2, r=i%2===0?10:4.5;
+      i===0?ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r):ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);
+    }
+    ctx.closePath(); ctx.fillStyle='#FF4444'; ctx.fill();
+    ctx.strokeStyle='#FF8888'; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle='rgba(255,100,100,0.9)'; ctx.font='bold 9px Space Mono,monospace';
+    ctx.fillText('SOURCE',scx+13,scy-5);
+    ctx.fillStyle='rgba(255,100,100,0.5)'; ctx.font='7px Space Mono,monospace';
+    ctx.fillText('(drag)',scx+13,scy+6);
+
+    // Hint
+    ctx.fillStyle='rgba(245,166,35,0.28)'; ctx.font='7px Space Mono,monospace';
+    ctx.fillText('DRAG SOURCE OR MICS TO UPDATE HYPERBOLAS', 8, H-8);
+
+    requestAnimationFrame(frame);
+  }
+
+  // ── Drag interaction ──
+  let dragging = null;
+
+  function getCP(e) {
+    const rect=canvas.getBoundingClientRect();
+    const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    const cl=e.touches?e.touches[0].clientX:e.clientX;
+    const ct=e.touches?e.touches[0].clientY:e.clientY;
+    return { cx:(cl-rect.left)*sx, cy:(ct-rect.top)*sy };
+  }
+
+  function hitTest(cx,cy) {
+    const{cx:scx,cy:scy}=toCanvas(src.x,src.y);
+    if(d2(cx,cy,scx,scy)<HIT_R) return 'src';
+    for(let i=0;i<mics.length;i++) {
+      const{cx:mcx,cy:mcy}=toCanvas(mics[i].x,mics[i].y);
+      if(d2(cx,cy,mcx,mcy)<HIT_R) return 'mic'+i;
+    }
+    return null;
+  }
+
+  function onDown(e) {
+    const{cx,cy}=getCP(e);
+    dragging=hitTest(cx,cy);
+    if(dragging){ e.preventDefault(); canvas.style.cursor='grabbing'; }
+  }
+
+  function onMove(e) {
+    if(!dragging) return;
+    e.preventDefault();
+    const{cx,cy}=getCP(e);
+    const margin=12;
+    const cxC=Math.max(margin,Math.min(W-margin,cx));
+    const cyC=Math.max(margin,Math.min(H-margin,cy));
+    const{x,y}=fromCanvas(cxC,cyC);
+    if(dragging==='src'){ src.x=x; src.y=y; }
+    else{ const i=parseInt(dragging[3]); mics[i].x=x; mics[i].y=y; }
+    computeAll();
+  }
+
+  function onUp(){ dragging=null; canvas.style.cursor='crosshair'; }
+
+  canvas.addEventListener('mousedown',onDown);
+  canvas.addEventListener('touchstart',onDown,{passive:false});
+  window.addEventListener('mousemove',onMove);
+  canvas.addEventListener('touchmove',onMove,{passive:false});
+  window.addEventListener('mouseup',onUp);
+  canvas.addEventListener('touchend',onUp);
+
+  // Hover cursor hint
+  canvas.addEventListener('mousemove', e => {
+    if(dragging) return;
+    const{cx,cy}=getCP(e);
+    canvas.style.cursor = hitTest(cx,cy) ? 'grab' : 'crosshair';
+  });
+
+  // Init
+  computeAll();
+  emitWave();
+  frame();
+})();
+
+// ── CTA CANVAS: Waveform ──
+(function() {
+  const canvas = document.getElementById('cta-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, t = 0;
+
+  function resize() {
+    W = canvas.width = canvas.parentElement.offsetWidth;
+    H = canvas.height = canvas.parentElement.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const lines = 5;
+    for (let l = 0; l < lines; l++) {
+      ctx.beginPath();
+      const yBase = H * (0.2 + l * 0.18);
+      const amp = 30 + l * 8;
+      const freq = 0.008 + l * 0.003;
+      const phase = t * (0.3 + l * 0.1) + l * 1.2;
+      for (let x = 0; x <= W; x += 2) {
+        const y = yBase + amp * Math.sin(x * freq + phase) * Math.sin(x * 0.002 + t * 0.1);
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      const alpha = 0.04 + l * 0.015;
+      ctx.strokeStyle = `rgba(245,166,35,${alpha})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    t++;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+</body>
+</html>

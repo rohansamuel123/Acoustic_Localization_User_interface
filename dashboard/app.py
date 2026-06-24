@@ -19,7 +19,14 @@ latest_data = {
 event_history = []
 
 # CHANGE IF COM PORT CHANGES
-ser = serial.Serial("COM4", 115200)
+SERIAL_PORT = "COM4"
+try:
+    ser = serial.Serial(SERIAL_PORT, 115200)
+except serial.SerialException as e:
+    ser = None
+    print(f"[WARN] Could not open {SERIAL_PORT}: {e}")
+    print("[WARN] Running without ESP32 hardware. Dashboard will serve "
+          "default values; connect a node and restart to see live data.")
 
 def serial_reader():
     global latest_data
@@ -46,13 +53,22 @@ def serial_reader():
         except Exception as e:
             print("Error:", e)
 
-threading.Thread(
-    target=serial_reader,
-    daemon=True
-).start()
+if ser is not None:
+    threading.Thread(
+        target=serial_reader,
+        daemon=True
+    ).start()
 
 @app.route("/")
 def home():
+    return render_template("pitch.html")
+
+@app.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html")
+
+@app.route("/classic")
+def classic():
     return render_template("index.html")
 
 @app.route("/data")

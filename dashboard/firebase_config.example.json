@@ -1,0 +1,14 @@
+{
+  "_instructions": [
+    "Copy this file to firebase_config.json (which is git-ignored) and fill it in.",
+    "1. Firebase console -> create/open a project -> Build -> Realtime Database -> Create.",
+    "2. Copy the database URL (https://YOUR-PROJECT-default-rtdb.firebaseio.com) into 'db_url'.",
+    "3. For a quick demo set the database Rules to test mode (read/write true) and leave 'auth' empty.",
+    "PREFER setting the secret via the FIREBASE_AUTH environment variable instead of this file,",
+    "so a long-lived database secret never lands in source control.",
+    "4. Restart the server and open /status -> firebase.status should read 'ok'.",
+    "Writes go to /acoustic/latest (live) and /acoustic/events (log)."
+  ],
+  "db_url": "",
+  "auth": ""
+}

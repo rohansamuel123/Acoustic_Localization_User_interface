@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local Firebase config may contain a database secret/token — keep it out of git.
+# Copy dashboard/firebase_config.example.json -> dashboard/firebase_config.json
+# and fill in your own values, or use the FIREBASE_DB_URL / FIREBASE_AUTH env vars.
+dashboard/firebase_config.json

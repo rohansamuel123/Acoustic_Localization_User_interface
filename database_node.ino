@@ -6,7 +6,7 @@
 
 // WiFi Credentials
 #define WIFI_SSID "Rohan"
-#define WIFI_PASSWORD "idontknow"
+#define WIFI_PASSWORD "idontknow" // <-- MUST CHANGE TO YOUR ACTUAL PASSWORD
 
 // Firebase config
 #define API_KEY "AIzaSyAXsDFhSni5UMUEOxGYEP49U0bCyidy8_E"
@@ -37,6 +37,7 @@ const float         DECAY     = 0.78;    // multiply stale nodes each cycle
 const int           STREAM_MS = 120;     // serial output cadence
 
 unsigned long lastStreamTime = 0;
+bool firebaseInitStarted = false;
 
 void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
   if (len == sizeof(SensorData)) {
@@ -191,6 +192,7 @@ void setup() {
   Serial.begin(115200);
 
   WiFi.mode(WIFI_STA);
+  // Start WiFi connection (Non-blocking)
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   // Initialize ESP-NOW
@@ -199,28 +201,28 @@ void setup() {
     return;
   }
   esp_now_register_recv_cb(OnDataRecv);
+  
+  // Notice: We removed the blocking while(WiFi.status() != WL_CONNECTED) loop!
   Serial.println("MASTER / DATABASE NODE READY (Listening for A, B, C, D)");
-
-  Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi Connected");
-
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
-
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
 }
 
 void loop() {
   unsigned long now = millis();
 
-  // 1. Decay any peer that has gone quiet so old events don't linger (every STREAM_MS).
+  // Initialize Firebase ONLY once WiFi connects, without blocking
+  if (WiFi.status() == WL_CONNECTED && !firebaseInitStarted) {
+    firebaseInitStarted = true;
+    config.api_key = API_KEY;
+    config.database_url = DATABASE_URL;
+    auth.user.email = USER_EMAIL;
+    auth.user.password = USER_PASSWORD;
+
+    Firebase.begin(&config, &auth);
+    Firebase.reconnectWiFi(true);
+    Serial.println("[WIFI] Connected! Firebase initializing...");
+  }
+
+  // 1. Decay any peer that has gone quiet so old events don't linger.
   if (now - lastStreamTime >= STREAM_MS) {
     lastStreamTime = now;
     
@@ -231,7 +233,7 @@ void loop() {
       }
     }
 
-    // 2. Stream raw energies to Serial for the Python backend (if it's still being used locally)
+    // 2. Stream raw energies to Serial for the Python backend
     Serial.print("{");
     Serial.print("\"A\":"); Serial.print((int)E[0]); Serial.print(",");
     Serial.print("\"B\":"); Serial.print((int)E[1]); Serial.print(",");
@@ -262,34 +264,34 @@ void loop() {
   }
   
   // Throttle regular updates to 500ms, or push immediately on a new event
-  if (isEvent || (now - lastFirebaseUpdate > 500)) {
-    if (!isEvent) {
-      lastFirebaseUpdate = now;
-    }
-    
-    FirebaseJson json;
-    json.set("A", energies[0]);
-    json.set("B", energies[1]);
-    json.set("C", energies[2]);
-    json.set("D", energies[3]);
-    
-    json.set("x", (double)((int)(x * 1000 + 0.5)) / 1000.0);
-    json.set("y", (double)((int)(y * 1000 + 0.5)) / 1000.0);
-    
-    json.set("threat", threat);
-    json.set("confidence", (double)((int)(conf * 1000 + 0.5)) / 1000.0);
-    json.set("event_id", eventId);
-    json.set("source", "live");
-    json.set("ts", (double)now);
-    
-    FirebaseJson energiesJson;
-    energiesJson.set("A", energies[0]);
-    energiesJson.set("B", energies[1]);
-    energiesJson.set("C", energies[2]);
-    energiesJson.set("D", energies[3]);
-    json.set("energies", energiesJson);
-    
-    if (Firebase.ready()) {
+  if (firebaseInitStarted && Firebase.ready()) {
+    if (isEvent || (now - lastFirebaseUpdate > 500)) {
+      if (!isEvent) {
+        lastFirebaseUpdate = now;
+      }
+      
+      FirebaseJson json;
+      json.set("A", energies[0]);
+      json.set("B", energies[1]);
+      json.set("C", energies[2]);
+      json.set("D", energies[3]);
+      
+      json.set("x", (double)((int)(x * 1000 + 0.5)) / 1000.0);
+      json.set("y", (double)((int)(y * 1000 + 0.5)) / 1000.0);
+      
+      json.set("threat", threat);
+      json.set("confidence", (double)((int)(conf * 1000 + 0.5)) / 1000.0);
+      json.set("event_id", eventId);
+      json.set("source", "live");
+      json.set("ts", (double)now);
+      
+      FirebaseJson energiesJson;
+      energiesJson.set("A", energies[0]);
+      energiesJson.set("B", energies[1]);
+      energiesJson.set("C", energies[2]);
+      energiesJson.set("D", energies[3]);
+      json.set("energies", energiesJson);
+      
       Firebase.RTDB.setJSON(&fbdo, "/acoustic/latest", &json);
       if (isEvent && threat != "LOW") {
          Firebase.RTDB.pushJSON(&fbdo, "/acoustic/events", &json);

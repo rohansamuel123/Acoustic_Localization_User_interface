@@ -39,18 +39,6 @@ typedef struct {
 
 SensorData incoming;
 
-// Database Node MAC address
-uint8_t dbNodeAddress[] = {0xB4, 0xBF, 0xE9, 0x0E, 0x8B, 0x98};
-
-typedef struct {
-  int A;
-  int B;
-  int C;
-  int D;
-} MasterData;
-
-MasterData outgoingData;
-
 // Energies + last-update time for A(0) B(1) C(2) D(3).
 float         E[4]       = {0, 0, 0, 0};
 unsigned long lastUpd[4] = {0, 0, 0, 0};
@@ -111,15 +99,6 @@ void setup() {
     return;
   }
   esp_now_register_recv_cb(OnDataRecv);
-
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, dbNodeAddress, 6);
-  peerInfo.channel = 0;
-  peerInfo.encrypt = false;
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("Failed to add DB Node peer");
-  }
-
   Serial.println("MASTER READY (RMS energy mode)");
 }
 
@@ -144,13 +123,6 @@ void loop() {
   Serial.print("\"C\":"); Serial.print((int)E[2]); Serial.print(",");
   Serial.print("\"D\":"); Serial.print((int)E[3]);
   Serial.println("}");
-
-  // Also broadcast the aggregated data to the database node via ESP-NOW
-  outgoingData.A = (int)E[0];
-  outgoingData.B = (int)E[1];
-  outgoingData.C = (int)E[2];
-  outgoingData.D = (int)E[3];
-  esp_now_send(dbNodeAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
 
   delay(STREAM_MS);
 }

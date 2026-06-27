@@ -27,9 +27,9 @@
 
 #define MIC_PIN 34
 
-char NODE_ID = 'A';          // <-- set to 'A', 'B' or 'C' per board
+char NODE_ID = 'A';          // <-- set to 'A', 'B', 'C', or 'D' per board
 
-// Master MAC address (Node D).  Replace with your master's MAC.
+// Master MAC address (5th Node).
 uint8_t masterAddress[] = {0xB4, 0xBF, 0xE9, 0x0E, 0x8B, 0x98};
 
 typedef struct {
